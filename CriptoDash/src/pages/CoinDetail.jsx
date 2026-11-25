@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import PriceChart from '../components/PriceChart'
 import { useCoinDetails } from '../hooks/useCoinDetails'
 import { useCoinChart } from '../hooks/useCoinChart'
 import { useGlobalData } from '../hooks/useGlobalData'
+import { useCoinNews } from '../hooks/useCoinNews'
 import {
   formatCurrency,
   formatCompactUsd,
@@ -61,6 +62,108 @@ function Pill({ active, onClick, children }) {
     >
       {children}
     </button>
+  )
+}
+
+function timeAgo(iso) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const h = Math.floor(diff / 3_600_000)
+  if (h < 1) return 'agora há pouco'
+  if (h < 24) return `há ${h}h`
+  const d = Math.floor(h / 24)
+  return `há ${d}d`
+}
+
+function NewsCard({ coinName }) {
+  const { items, loading, error } = useCoinNews(coinName)
+
+  return (
+    <Card>
+      <h3 className="mb-3 font-semibold text-orange-400">
+        Notícias de {coinName}
+      </h3>
+
+      {loading && <p className="text-sm text-slate-400">Carregando notícias...</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      {!loading && !error && items.length === 0 && (
+        <p className="text-sm text-slate-400">
+          Nenhuma notícia recente sobre {coinName}.
+        </p>
+      )}
+
+      <ul className="space-y-3">
+        {items.slice(0, 4).map((n) => (
+          <li key={n.id}>
+            <a
+              href={n.url}
+              target="_blank"
+              rel="noreferrer"
+              className="group block"
+            >
+              <p className="line-clamp-2 text-sm leading-snug text-slate-200 group-hover:text-orange-400">
+                {n.title}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {n.source}
+                {n.source && ' · '}
+                {timeAgo(n.publishedAt)}
+              </p>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  )
+}
+
+function AboutModal({ coin, description, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[80vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-white/10 bg-[#0f1c2e] p-6"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <h3 className="text-lg font-semibold text-orange-400">
+            Sobre {coin.name}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="rounded-lg px-2 text-slate-400 hover:bg-white/10 hover:text-white"
+          >
+            ✕
+          </button>
+        </div>
+
+        <p className="whitespace-pre-line text-sm leading-relaxed text-slate-300">
+          {description || 'Sem descrição disponível.'}
+        </p>
+
+        {coin.links?.homepage?.[0] && (
+          <a
+            href={coin.links.homepage[0]}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-5 inline-block rounded-lg border border-orange-500 px-4 py-1.5 text-sm text-orange-400 hover:bg-orange-500/10"
+          >
+            Site oficial →
+          </a>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -123,6 +226,7 @@ function Dominance({ data }) {
 function CoinDetail({ coinId, onBack }) {
   const [metric, setMetric] = useState('price')
   const [days, setDays] = useState(1)
+  const [showAbout, setShowAbout] = useState(false)
 
   const { coin, loading, error } = useCoinDetails(coinId)
   const chart = useCoinChart(coinId, metric, days)
@@ -183,6 +287,7 @@ function CoinDetail({ coinId, onBack }) {
                 </div>
               </div>
 
+              <div className="flex items-stretch gap-3">
               <div className="flex gap-8 rounded-2xl border border-white/10 bg-white/[0.03] px-6 py-4">
                 <div>
                   <p className="text-sm text-slate-400">Market Cap</p>
@@ -205,6 +310,15 @@ function CoinDetail({ coinId, onBack }) {
                     </span>
                   </p>
                 </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowAbout(true)}
+                className="rounded-2xl border border-orange-500 px-5 text-sm font-medium text-orange-400 transition-colors hover:bg-orange-500/10"
+              >
+                Saiba mais
+              </button>
               </div>
             </header>
 
@@ -252,24 +366,7 @@ function CoinDetail({ coinId, onBack }) {
               </Card>
 
               <div className="flex flex-col gap-4">
-                <Card>
-                  <h3 className="mb-2 font-semibold text-orange-400">
-                    Sobre {coin.name}
-                  </h3>
-                  <p className="line-clamp-6 text-sm leading-relaxed text-slate-300">
-                    {description || 'Sem descrição disponível.'}
-                  </p>
-                  {coin.links?.homepage?.[0] && (
-                    <a
-                      href={coin.links.homepage[0]}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-4 inline-block rounded-lg border border-orange-500 px-4 py-1.5 text-sm text-orange-400 hover:bg-orange-500/10"
-                    >
-                      Saiba mais →
-                    </a>
-                  )}
-                </Card>
+                <NewsCard coinName={coin.name} />
 
                 <Card>
                   <h3 className="mb-2 font-semibold">Histórico de Preço</h3>
@@ -319,6 +416,14 @@ function CoinDetail({ coinId, onBack }) {
           </>
         )}
       </main>
+
+      {showAbout && coin && (
+        <AboutModal
+          coin={coin}
+          description={description}
+          onClose={() => setShowAbout(false)}
+        />
+      )}
     </div>
   )
 }
