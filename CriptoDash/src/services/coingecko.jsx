@@ -1,94 +1,82 @@
-const BASE_URL = 'https://api.coingecko.com/api/v3'
+const BASE_URL = 'http://localhost:8080/api/cg'
 
-// Cache em memória (60s): evita chamadas repetidas (ex: StrictMode duplicando
-// efeitos em dev) e protege contra o limite de requisições da API gratuita.
-const CACHE_TTL = 60_000
-const cache = new Map()
+  const CACHE_TTL = 60_000
+  const cache = new Map()
 
-function request(path) {
-  const cached = cache.get(path)
-  if (cached && Date.now() - cached.time < CACHE_TTL) return cached.promise
+  function request(path) {
+    const cached = cache.get(path)
+    if (cached && Date.now() - cached.time < CACHE_TTL) return cached.promise
 
-  const promise = fetchJson(path).catch((err) => {
-    cache.delete(path) // não guarda falhas
-    throw err
-  })
+    const promise = fetchJson(path).catch((err) => {
+      cache.delete(path) 
+      throw err
+    })
 
-  cache.set(path, { time: Date.now(), promise })
-  return promise
-}
+    cache.set(path, { time: Date.now(), promise })
+    return promise
+  }
 
-async function fetchJson(path) {
-  let response
+  async function fetchJson(path) {
+    let response
 
-  try {
-    response = await fetch(`${BASE_URL}${path}`)
-  } catch {
-    // Erro de rede/CORS. A CoinGecko responde 429 sem CORS, então o
-    // navegador também cai aqui quando o limite de requisições estoura.
-    throw new Error(
-      'Não foi possível conectar à CoinGecko. Pode ser o limite de requisições: aguarde 1 minuto e tente de novo.',
+    try {
+      response = await fetch(`${BASE_URL}${path}`)
+    } catch {
+
+      throw new Error(
+        'Não foi possível conectar à CoinGecko. Pode ser o limite de requisições: aguarde 1 minuto e tente de novo.',
+      )
+    }
+
+    if (response.status === 429) {
+      throw new Error('Muitas requisições. Aguarde um minuto e tente de novo.')
+    }
+
+    if (!response.ok) {
+      throw new Error('Erro ao buscar dados da CoinGecko.')
+    }
+
+    return response.json()
+  }
+
+  export async function searchCoins(query) {
+    const data = await request(`/search?query=${encodeURIComponent(query)}`)
+    return data.coins
+  }
+
+  export async function getGlobalData() {
+    const data = await request('/global')
+    return data.data
+  }
+
+  export const CURRENCY = 'usd'
+
+  export async function getCoinDetails(id) {
+    return request(
+      `/coins/${encodeURIComponent(id)}?localization=true&tickers=false&community_data=false&developer_data=false`,
     )
   }
 
-  if (response.status === 429) {
-    throw new Error('Muitas requisições. Aguarde um minuto e tente de novo.')
+  export async function getCoinOhlc(id, days) {
+    return request(
+      `/coins/${encodeURIComponent(id)}/ohlc?vs_currency=${CURRENCY}&days=${days}`,
+    )
   }
 
-  if (!response.ok) {
-    throw new Error('Erro ao buscar dados da CoinGecko.')
+  export async function getCoinMarketChart(id, days) {
+    return request(
+      `/coins/${encodeURIComponent(id)}/market_chart?vs_currency=${CURRENCY}&days=${days}`,
+    )
   }
 
-  return response.json()
-}
-
-export async function searchCoins(query) {
-  const data = await request(`/search?query=${encodeURIComponent(query)}`)
-  return data.coins
-}
-
-export async function getGlobalData() {
-  const data = await request('/global')
-  return data.data
-}
-
-export const CURRENCY = 'usd'
-
-export async function getCoinDetails(id) {
-  return request(
-    `/coins/${encodeURIComponent(id)}?localization=true&tickers=false&community_data=false&developer_data=false`,
-  )
-}
-
-// days: 1, 7, 14, 30, 90, 180, 365 ou 'max'
-// retorna [[timestamp, open, high, low, close], ...]
-export async function getCoinOhlc(id, days) {
-  return request(
-    `/coins/${encodeURIComponent(id)}/ohlc?vs_currency=${CURRENCY}&days=${days}`,
-  )
-}
-
-// retorna { prices, market_caps, total_volumes } (cada um [[timestamp, valor], ...])
-export async function getCoinMarketChart(id, days) {
-  return request(
-    `/coins/${encodeURIComponent(id)}/market_chart?vs_currency=${CURRENCY}&days=${days}`,
-  )
-}
-
-// Preço e variação 24h de várias moedas de uma vez (usado na sidebar).
-// ids: array de ids da CoinGecko, ex: ['bitcoin', 'ethereum']
-export async function getCoinsMarkets(ids) {
-  const list = ids.map(encodeURIComponent).join(',')
-  return request(
-    `/coins/markets?vs_currency=${CURRENCY}&ids=${list}&order=market_cap_desc&per_page=250&price_change_percentage=24h`,
-  )
-}
-
-
-// Top 100 em BRL com mini-gráfico de 7 dias (sparkline). Uma única chamada
-// alimenta os cards da Home: preço do BTC/ETH e a tendência do market cap.
-export async function getTopMarketsBrl() {
-  return request(
-    '/coins/markets?vs_currency=brl&order=market_cap_desc&per_page=100&page=1&sparkline=true&price_change_percentage=24h,7d',
-  )
-}
+  export async function getCoinsMarkets(ids) {
+    const list = ids.map(encodeURIComponent).join(',')
+    return request(
+      `/coins/markets?vs_currency=${CURRENCY}&ids=${list}&order=market_cap_desc&per_page=250&price_change_percentage=24h`,
+    )
+  }
+  export async function getTopMarketsBrl() {
+    return request(
+      '/coins/markets?vs_currency=brl&order=market_cap_desc&per_page=100&page=1&sparkline=true&price_change_percentage=24h,7d',
+    )
+  }
